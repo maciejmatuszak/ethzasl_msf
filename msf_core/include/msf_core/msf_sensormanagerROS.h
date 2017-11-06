@@ -71,6 +71,7 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
   ros::Publisher pubCovCoreAux_; ///< Publishes the covariance matrix for the cross-correlations between core and auxiliary states.
 
   std::string msf_output_frame_;
+  uint32_t msf_output_freq_divider_ = 1;
 
   mutable tf::TransformBroadcaster tf_broadcaster_;
 
@@ -87,6 +88,12 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
 
     pnh.param("data_playback", this->data_playback_, false);
     pnh.param("msf_output_frame", msf_output_frame_, std::string("world"));
+
+    int temp_int = static_cast<int>(msf_output_freq_divider_);
+    pnh.param("msf_output_freq_divider", temp_int, temp_int);
+    assert(temp_int >0);
+    msf_output_freq_divider_ = static_cast<uint32_t>(temp_int);
+    ROS_INFO("msf_output_freq_divider: %d", msf_output_freq_divider_);
 
     ros::NodeHandle nh("msf_core");
 
@@ -200,31 +207,49 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
   virtual void PublishStateAfterPropagation(
       const shared_ptr<EKFState_T>& state) const {
 
-    if (pubPoseCrtl_.getNumSubscribers() || pubPose_.getNumSubscribers() || pubOdometry_.getNumSubscribers()) {
-      static int msg_seq = 0;
-
-      geometry_msgs::PoseWithCovarianceStamped msgPose;
-      msgPose.header.stamp = ros::Time(state->time);
-      msgPose.header.seq = msg_seq++;
-      msgPose.header.frame_id = msf_output_frame_;
-      state->ToPoseMsg(msgPose);
-      pubPose_.publish(msgPose);
-
-
-      nav_msgs::Odometry msgOdometry;
-      msgOdometry.header.stamp = ros::Time(state->time);
-      msgOdometry.header.seq = msg_seq++;
-      msgOdometry.header.frame_id = msf_output_frame_;
-      msgOdometry.child_frame_id = "imu";
-      state->ToOdometryMsg(msgOdometry);
-      pubOdometry_.publish(msgOdometry);
-
-      sensor_fusion_comm::ExtState msgPoseCtrl;
-      msgPoseCtrl.header = msgPose.header;
-      state->ToExtStateMsg(msgPoseCtrl);
-      pubPoseCrtl_.publish(msgPoseCtrl);
-
+    static uint32_t msf_output_freq_counter_ = 0;
+    // a mechanism to limit the output freq
+    if(msf_output_freq_counter_ % msf_output_freq_divider_ != 0)
+    {
+        msf_output_freq_counter_++;
+        return;
     }
+    else
+    {
+        msf_output_freq_counter_++;
+    }
+
+      static int msg_seq = 0;
+      geometry_msgs::PoseWithCovarianceStamped msgPose;
+
+      if (pubPose_.getNumSubscribers())
+      {
+          geometry_msgs::PoseWithCovarianceStamped msgPose;
+          msgPose.header.stamp = ros::Time(state->time);
+          msgPose.header.seq = msg_seq++;
+          msgPose.header.frame_id = msf_output_frame_;
+          state->ToPoseMsg(msgPose);
+          pubPose_.publish(msgPose);
+      }
+
+      if (pubOdometry_.getNumSubscribers())
+      {
+          nav_msgs::Odometry msgOdometry;
+          msgOdometry.header.stamp = ros::Time(state->time);
+          msgOdometry.header.seq = msg_seq++;
+          msgOdometry.header.frame_id = msf_output_frame_;
+          msgOdometry.child_frame_id = "imu";
+          state->ToOdometryMsg(msgOdometry);
+          pubOdometry_.publish(msgOdometry);
+      }
+
+      if (pubPoseCrtl_.getNumSubscribers())
+      {
+          sensor_fusion_comm::ExtState msgPoseCtrl;
+          msgPoseCtrl.header = msgPose.header;
+          state->ToExtStateMsg(msgPoseCtrl);
+          pubPoseCrtl_.publish(msgPoseCtrl);
+      }
   }
 
   virtual void PublishStateAfterUpdate(
