@@ -30,6 +30,7 @@
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Imu.h>
 #include <tf/transform_broadcaster.h>
+#include <diagnostic_updater/diagnostic_updater.h>
 #include <diagnostic_updater/publisher.h>
 
 #include <msf_core/MSF_CoreConfig.h>
@@ -76,6 +77,7 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
   diagnostic_updater::TopicDiagnostic *diagTopicUpdatePtr;
   double expectedPropagationFreq;
   double expectedUpdateFreq;
+  ros::Timer diagUpdateTimer;
 
   std::string msf_output_frame_;
   uint32_t msf_output_freq_divider_ = 1;
@@ -119,6 +121,8 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
         diagnostic_updater::FrequencyStatusParam(&expectedUpdateFreq, &expectedUpdateFreq, 0.1, 100),
         diagnostic_updater::TimeStampStatusParam());
 
+    diagUpdateTimer = nh.createTimer(ros::Duration(0.5), &MSF_SensorManagerROS::diagTimerUpdateCallback, this);
+
 
 
     pubState_ = nh.advertise < sensor_fusion_comm::DoubleArrayStamped
@@ -154,6 +158,10 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
       topicsStr += ("\t\t" + topics.at(i) + "\n");
 
     MSF_INFO_STREAM(""<< topicsStr);
+  }
+
+  void diagTimerUpdateCallback(const ros::TimerEvent&){
+      diagUpdater.update();
   }
 
   virtual ~MSF_SensorManagerROS() {
@@ -233,7 +241,6 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
   virtual void PublishStateAfterPropagation(
       const shared_ptr<EKFState_T>& state) const {
 
-    diagUpdater.update();
     static uint32_t msf_output_freq_counter_ = 0;
     // a mechanism to limit the output freq
     if(msf_output_freq_counter_ % msf_output_freq_divider_ != 0)
@@ -298,7 +305,6 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
     msgCorrect_.linear_acceleration.z = 0;
 
     diagTopicUpdatePtr->tick(msgCorrect_.header.stamp);
-    diagUpdater.update();
 
     // Prevent junk being sent to the external state propagation when data
     // playback is (accidentally) on.
