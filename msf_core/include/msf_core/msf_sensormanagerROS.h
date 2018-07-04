@@ -112,11 +112,11 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
     diagUpdater.setHardwareID("msf_core");
 
     diagTopicPropagationPtr = new diagnostic_updater::TopicDiagnostic("EKF Propagation", diagUpdater,
-        diagnostic_updater::FrequencyStatusParam(&expectedPropagationFreq &expectedPropagationFreq, 0.1, 100),
+        diagnostic_updater::FrequencyStatusParam(&expectedPropagationFreq, &expectedPropagationFreq, 0.1, 100),
         diagnostic_updater::TimeStampStatusParam());
 
     diagTopicUpdatePtr = new diagnostic_updater::TopicDiagnostic("EKF Update", diagUpdater,
-        diagnostic_updater::FrequencyStatusParam(&expectedUpdateFreq &expectedUpdateFreq, 0.1, 100),
+        diagnostic_updater::FrequencyStatusParam(&expectedUpdateFreq, &expectedUpdateFreq, 0.1, 100),
         diagnostic_updater::TimeStampStatusParam());
 
 
