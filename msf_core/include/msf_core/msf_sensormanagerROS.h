@@ -110,6 +110,8 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
     expectedUpdateFreq = 50.0;
     pnh.param("expected_propagation_freq", expectedPropagationFreq, expectedPropagationFreq);
     pnh.param("expected_update_freq", expectedUpdateFreq, expectedUpdateFreq);
+    ROS_INFO("expected_propagation_freq: %f [Hz]", expectedPropagationFreq);
+    ROS_INFO("expected_update_freq: %f [Hz]", expectedUpdateFreq);
 
     diagUpdater.setHardwareID("msf_core");
 
@@ -241,6 +243,9 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
   virtual void PublishStateAfterPropagation(
       const shared_ptr<EKFState_T>& state) const {
 
+
+    diagTopicPropagationPtr->tick(ros::Time(state->time));
+
     static uint32_t msf_output_freq_counter_ = 0;
     // a mechanism to limit the output freq
     if(msf_output_freq_counter_ % msf_output_freq_divider_ != 0)
@@ -252,7 +257,6 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
     {
         msf_output_freq_counter_++;
     }
-
 
       static int msg_seq = 0;
       geometry_msgs::PoseWithCovarianceStamped msgPose;
@@ -266,8 +270,6 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
           state->ToPoseMsg(msgPose);
           pubPose_.publish(msgPose);
       }
-
-      diagTopicPropagationPtr->tick(msgPose.header.stamp);
 
       if (pubOdometry_.getNumSubscribers())
       {
