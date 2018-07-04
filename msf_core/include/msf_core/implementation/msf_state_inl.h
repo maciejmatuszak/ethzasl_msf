@@ -356,7 +356,7 @@ void GenericState_T<stateVector_T, StateDefinition_T>::GetPoseCovariance(
    *        |  cov_q_p  |  cov_q_q  |
    */
 
-  CHECK_EQ(cov.size(), 6 * 6);
+  CHECK_EQ(cov.size(), 6u * 6u);
   Eigen::Map<Eigen::Matrix<double,6,6> > covariance_map(cov.data());
 
   covariance_map.block<3,3>(0,0) = P.template block<3,3>(idxstartcorr_p, idxstartcorr_p);
@@ -423,7 +423,7 @@ void GenericState_T<stateVector_T, StateDefinition_T>::GetTwistCovarianceInImuFr
                     0, noise_gyr[1] * noise_gyr[1], 0,
                     0, 0, noise_gyr[2] * noise_gyr[2];
 
-  CHECK_EQ(cov.size(), 6 * 6);
+  CHECK_EQ(cov.size(), 6u * 6u);
   Eigen::Map<Eigen::Matrix<double,6,6> > covariance_map(cov.data());
 
   covariance_map.block<3,3>(0,0) = cov_velocity_I;
