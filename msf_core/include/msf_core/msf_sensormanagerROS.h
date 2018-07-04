@@ -30,6 +30,7 @@
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/Imu.h>
 #include <tf/transform_broadcaster.h>
+#include <diagnostic_updater/publisher.h>
 
 #include <msf_core/MSF_CoreConfig.h>
 #include <msf_core/msf_sensormanager.h>
@@ -70,6 +71,12 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
   ros::Publisher pubCovAux_;  ///< Publishes the covariance matrix for the auxiliary states.
   ros::Publisher pubCovCoreAux_; ///< Publishes the covariance matrix for the cross-correlations between core and auxiliary states.
 
+  diagnostic_updater::Updater diagUpdater;
+  diagnostic_updater::TopicDiagnostic *diagTopicPropagationPtr;
+  diagnostic_updater::TopicDiagnostic *diagTopicUpdatePtr;
+  double expectedPropagationFreq;
+  double expectedUpdateFreq;
+
   std::string msf_output_frame_;
   uint32_t msf_output_freq_divider_ = 1;
 
@@ -96,6 +103,23 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
     ROS_INFO("msf_output_freq_divider: %d", msf_output_freq_divider_);
 
     ros::NodeHandle nh("msf_core");
+
+    expectedPropagationFreq = 50.0;
+    expectedUpdateFreq = 50.0;
+    pnh.param("expected_propagation_freq", expectedPropagationFreq, expectedPropagationFreq);
+    pnh.param("expected_update_freq", expectedUpdateFreq, expectedUpdateFreq);
+
+    diagUpdater.setHardwareID("msf_core");
+
+    diagTopicPropagationPtr = new diagnostic_updater::TopicDiagnostic("EKF Propagation", diagUpdater,
+        diagnostic_updater::FrequencyStatusParam(&expectedPropagationFreq &expectedPropagationFreq, 0.1, 100),
+        diagnostic_updater::TimeStampStatusParam());
+
+    diagTopicUpdatePtr = new diagnostic_updater::TopicDiagnostic("EKF Update", diagUpdater,
+        diagnostic_updater::FrequencyStatusParam(&expectedUpdateFreq &expectedUpdateFreq, 0.1, 100),
+        diagnostic_updater::TimeStampStatusParam());
+
+
 
     pubState_ = nh.advertise < sensor_fusion_comm::DoubleArrayStamped
         > ("state_out", 100);
@@ -134,6 +158,8 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
 
   virtual ~MSF_SensorManagerROS() {
     delete reconfServer_;
+    delete diagTopicPropagationPtr;
+    delete diagTopicUpdatePtr;
   }
 
   /**
@@ -207,6 +233,7 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
   virtual void PublishStateAfterPropagation(
       const shared_ptr<EKFState_T>& state) const {
 
+    diagUpdater.update();
     static uint32_t msf_output_freq_counter_ = 0;
     // a mechanism to limit the output freq
     if(msf_output_freq_counter_ % msf_output_freq_divider_ != 0)
@@ -218,6 +245,7 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
     {
         msf_output_freq_counter_++;
     }
+
 
       static int msg_seq = 0;
       geometry_msgs::PoseWithCovarianceStamped msgPose;
@@ -231,6 +259,8 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
           state->ToPoseMsg(msgPose);
           pubPose_.publish(msgPose);
       }
+
+      diagTopicPropagationPtr->tick(msgPose.header.stamp);
 
       if (pubOdometry_.getNumSubscribers())
       {
@@ -266,6 +296,9 @@ struct MSF_SensorManagerROS : public msf_core::MSF_SensorManager<EKFState_T> {
     msgCorrect_.linear_acceleration.x = 0;
     msgCorrect_.linear_acceleration.y = 0;
     msgCorrect_.linear_acceleration.z = 0;
+
+    diagTopicUpdatePtr->tick(msgCorrect_.header.stamp);
+    diagUpdater.update();
 
     // Prevent junk being sent to the external state propagation when data
     // playback is (accidentally) on.
